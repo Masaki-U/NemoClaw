@@ -5,7 +5,7 @@ mixing secrets into tracked project files.
 
 Files
 
-- `.env.example`: values you will gather from the Discord Developer Portal
+- `env.example`: values you will gather from the Discord Developer Portal
 
 Required for NemoClaw
 
@@ -29,7 +29,7 @@ Recommended flow
    - Send Messages
    - Read Message History
 5. Install the bot into your new server.
-6. Copy the values into a local `.env` file based on `.env.example`.
+6. Copy the values into a local `.env` file based on `env.example`.
 7. Put `DISCORD_BOT_TOKEN` into the environment NemoClaw uses.
 8. Start the NemoClaw services and verify the bot appears in the server member list.
 
