@@ -33,6 +33,21 @@ Recommended flow
 7. Put `DISCORD_BOT_TOKEN` into the environment NemoClaw uses.
 8. Start the NemoClaw services and verify the bot appears in the server member list.
 
+Helper script
+
+After filling `discord/.env.local`, run:
+
+```bash
+./discord/connect-discord.sh my-assistant
+```
+
+This script:
+
+1. applies the `discord` network policy preset
+2. configures the Discord channel inside the existing sandbox
+3. reloads OpenClaw secrets/runtime
+4. prints `openclaw channels status --deep`
+
 Mobile note
 
 Any normal Discord server is reachable from the Discord iOS/Android app once
