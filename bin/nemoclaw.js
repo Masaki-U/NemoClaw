@@ -6,6 +6,7 @@ const { execFileSync, spawnSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const OPENAI_CODEX_MANUAL_LOGIN = path.join(__dirname, "lib", "openai-codex-manual-login.mjs");
 
 // ---------------------------------------------------------------------------
 // Color / style — respects NO_COLOR and non-TTY environments.
@@ -571,6 +572,46 @@ async function sandboxConnect(sandboxName) {
   exitWithSpawnResult(result);
 }
 
+function withSandboxSshConfig(sandboxName, callback) {
+  const sshConfig = captureOpenshell(["sandbox", "ssh-config", sandboxName], { ignoreError: true });
+  if (sshConfig.status !== 0 || !sshConfig.output) {
+    console.error(`  Could not generate SSH config for sandbox '${sandboxName}'.`);
+    process.exit(sshConfig.status || 1);
+  }
+
+  const confDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-ssh-"));
+  const confPath = path.join(confDir, "config");
+  fs.writeFileSync(confPath, `${sshConfig.output}\n`, { mode: 0o600 });
+
+  try {
+    return callback(confPath, `openshell-${sandboxName}`);
+  } finally {
+    try { fs.unlinkSync(confPath); } catch { /* ignored */ }
+    try { fs.rmdirSync(confDir); } catch { /* ignored */ }
+  }
+}
+
+async function sandboxRunNodeScript(sandboxName, scriptPath, scriptArgs = []) {
+  await ensureLiveSandboxOrExit(sandboxName);
+  const script = fs.readFileSync(scriptPath, "utf8");
+
+  withSandboxSshConfig(sandboxName, (confPath, sshHost) => {
+    const remoteCommand = ["node", "--input-type=module", "-", ...scriptArgs].map(shellQuote).join(" ");
+    const result = spawnSync(
+      "ssh",
+      ["-F", confPath, "-o", "StrictHostKeyChecking=no", sshHost, remoteCommand],
+      {
+        stdio: ["pipe", "inherit", "inherit"],
+        cwd: ROOT,
+        env: process.env,
+        input: script,
+        encoding: "utf8",
+      }
+    );
+    exitWithSpawnResult(result);
+  });
+}
+
 async function sandboxOpenclaw(sandboxName, openclawArgs) {
   await ensureLiveSandboxOrExit(sandboxName);
   if (!Array.isArray(openclawArgs) || openclawArgs.length === 0) {
@@ -579,20 +620,37 @@ async function sandboxOpenclaw(sandboxName, openclawArgs) {
     process.exit(1);
   }
 
-  const result = spawnSync(
-    getOpenshellBinary(),
-    ["sandbox", "connect", sandboxName, "--", "nemoclaw-start", "openclaw", ...openclawArgs],
-    {
-      stdio: "inherit",
-      cwd: ROOT,
-      env: process.env,
-    }
-  );
-  exitWithSpawnResult(result);
+  withSandboxSshConfig(sandboxName, (confPath, sshHost) => {
+    const remoteCommand = ["nemoclaw-start", "openclaw", ...openclawArgs].map(shellQuote).join(" ");
+    const result = spawnSync(
+      "ssh",
+      ["-tt", "-F", confPath, "-o", "StrictHostKeyChecking=no", sshHost, remoteCommand],
+      {
+        stdio: "inherit",
+        cwd: ROOT,
+        env: process.env,
+      }
+    );
+    exitWithSpawnResult(result);
+  });
 }
 
 async function sandboxCodexLogin(sandboxName) {
   await sandboxOpenclaw(sandboxName, ["models", "auth", "login", "--provider", "openai-codex", "--set-default"]);
+}
+
+async function sandboxCodexLoginStart(sandboxName) {
+  await sandboxRunNodeScript(sandboxName, OPENAI_CODEX_MANUAL_LOGIN, ["start"]);
+}
+
+async function sandboxCodexLoginFinish(sandboxName, callbackUrl) {
+  if (!callbackUrl) {
+    console.error("  Usage: nemoclaw <sandbox> codex-login-finish <callback-url>");
+    process.exit(1);
+  }
+
+  await sandboxRunNodeScript(sandboxName, OPENAI_CODEX_MANUAL_LOGIN, ["finish", callbackUrl]);
+  await sandboxOpenclaw(sandboxName, ["secrets", "reload"]);
 }
 
 // eslint-disable-next-line complexity
@@ -747,6 +805,8 @@ function help() {
     ${B}nemoclaw list${R}                    List all sandboxes
     nemoclaw <name> connect          Shell into a running sandbox
     nemoclaw <name> codex-login      Run OpenAI Codex OAuth inside the sandbox
+    nemoclaw <name> codex-login-start   Start deterministic OpenAI Codex OAuth
+    nemoclaw <name> codex-login-finish  Save OpenAI Codex OAuth from callback URL
     nemoclaw <name> status           Sandbox health + NIM status
     nemoclaw <name> logs ${D}[--follow]${R}  Stream sandbox logs
     nemoclaw <name> openclaw ...     Run an OpenClaw CLI command inside the sandbox
@@ -828,6 +888,8 @@ const [cmd, ...args] = process.argv.slice(2);
     switch (action) {
       case "connect":     await sandboxConnect(cmd); break;
       case "codex-login": await sandboxCodexLogin(cmd); break;
+      case "codex-login-start": await sandboxCodexLoginStart(cmd); break;
+      case "codex-login-finish": await sandboxCodexLoginFinish(cmd, actionArgs.join(" ").trim()); break;
       case "status":      await sandboxStatus(cmd); break;
       case "logs":        sandboxLogs(cmd, actionArgs.includes("--follow")); break;
       case "openclaw":    await sandboxOpenclaw(cmd, actionArgs); break;
@@ -836,7 +898,7 @@ const [cmd, ...args] = process.argv.slice(2);
       case "destroy":     await sandboxDestroy(cmd, actionArgs); break;
       default:
         console.error(`  Unknown action: ${action}`);
-        console.error(`  Valid actions: connect, codex-login, status, logs, openclaw, policy-add, policy-list, destroy`);
+        console.error(`  Valid actions: connect, codex-login, codex-login-start, codex-login-finish, status, logs, openclaw, policy-add, policy-list, destroy`);
         process.exit(1);
     }
     return;

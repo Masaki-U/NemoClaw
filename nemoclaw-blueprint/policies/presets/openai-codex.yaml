@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+preset:
+  name: openai-codex
+  description: "OpenAI Codex OAuth and API access"
+
+network_policies:
+  openai_codex:
+    name: openai_codex
+    endpoints:
+      - host: auth.openai.com
+        port: 443
+        access: full
+      - host: chatgpt.com
+        port: 443
+        access: full
+      - host: api.openai.com
+        port: 443
+        access: full
+    binaries:
+      - { path: /usr/local/bin/openclaw }
+      - { path: /usr/local/bin/node* }
+      - { path: /usr/bin/node* }

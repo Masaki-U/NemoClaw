@@ -2092,20 +2092,36 @@ async function setupInference(sandboxName, model, provider, endpointUrl = null, 
 // ── Step 6: OpenClaw ─────────────────────────────────────────────
 
 function runSandboxOpenclaw(sandboxName, args, opts = {}) {
-  const result = spawnSync(
-    getOpenshellBinary(),
-    ["sandbox", "connect", sandboxName, "--", "nemoclaw-start", "openclaw", ...args],
-    {
-      stdio: opts.stdio || "inherit",
-      cwd: ROOT,
-      env: process.env,
-    }
-  );
-  return result;
+  const sshConfig = runCaptureOpenshell(["sandbox", "ssh-config", sandboxName], { ignoreError: true });
+  if (sshConfig.status !== 0 || !sshConfig.stdout.trim()) {
+    return { status: sshConfig.status || 1 };
+  }
+
+  const confDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-ssh-"));
+  const confPath = path.join(confDir, "config");
+  fs.writeFileSync(confPath, `${sshConfig.stdout.trim()}\n`, { mode: 0o600 });
+
+  try {
+    const remoteCommand = ["nemoclaw-start", "openclaw", ...args].map(shellQuote).join(" ");
+    return spawnSync(
+      "ssh",
+      ["-tt", "-F", confPath, "-o", "StrictHostKeyChecking=no", `openshell-${sandboxName}`, remoteCommand],
+      {
+        stdio: opts.stdio || "inherit",
+        cwd: ROOT,
+        env: process.env,
+      }
+    );
+  } finally {
+    try { fs.unlinkSync(confPath); } catch { /* ignored */ }
+    try { fs.rmdirSync(confDir); } catch { /* ignored */ }
+  }
 }
 
 function printCodexLoginRetryHint(sandboxName) {
   console.log(`  Retry later: nemoclaw ${sandboxName} codex-login`);
+  console.log(`  Reliable mode: nemoclaw ${sandboxName} codex-login-start`);
+  console.log(`                 nemoclaw ${sandboxName} codex-login-finish <callback-url>`);
 }
 
 async function setupOpenclaw(sandboxName, model, provider) {
@@ -2160,10 +2176,13 @@ async function setupOpenclaw(sandboxName, model, provider) {
 // ── Step 7: Policy presets ───────────────────────────────────────
 
 // eslint-disable-next-line complexity
-async function setupPolicies(sandboxName) {
+async function setupPolicies(sandboxName, provider = null) {
   step(7, 7, "Policy presets");
 
   const suggestions = ["pypi", "npm"];
+  if (provider === "openai-codex") {
+    suggestions.push("openai-codex");
+  }
 
   // Auto-detect based on env tokens
   if (getCredential("TELEGRAM_BOT_TOKEN")) {
@@ -2431,7 +2450,7 @@ async function onboard(opts = {}) {
     registry.updateSandbox(sandboxName, { nimContainer });
   }
   await setupOpenclaw(sandboxName, model, provider);
-  await setupPolicies(sandboxName);
+  await setupPolicies(sandboxName, provider);
   printDashboard(sandboxName, model, provider, nimContainer);
 }
 

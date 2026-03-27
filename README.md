@@ -17,6 +17,9 @@ It also includes open source models such as [NVIDIA Nemotron](https://build.nvid
 > This fork adds an `OpenAI Codex (ChatGPT OAuth inside sandbox)` onboarding path.
 > When selected, NemoClaw keeps OpenClaw authentication inside the sandbox, skips the host-side managed inference route, and launches `openclaw models auth login --provider openai-codex --set-default` from inside the sandbox during onboarding.
 > You can also create the sandbox first with `NEMOCLAW_PROVIDER=openai-codex nemoclaw onboard --non-interactive` and complete OAuth later with `nemoclaw <sandbox> codex-login`.
+> For remote/VPS-style environments where the interactive callback prompt is unreliable, this fork also adds:
+> `nemoclaw <sandbox> codex-login-start` and
+> `nemoclaw <sandbox> codex-login-finish <callback-url>`.
 
 > **Alpha software**
 >
