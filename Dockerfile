@@ -54,6 +54,7 @@ ARG CHAT_UI_URL=http://127.0.0.1:18789
 ARG NEMOCLAW_INFERENCE_BASE_URL=https://inference.local/v1
 ARG NEMOCLAW_INFERENCE_API=openai-completions
 ARG NEMOCLAW_INFERENCE_COMPAT_B64=e30=
+ARG NEMOCLAW_MANAGED_INFERENCE=1
 # Unique per build to ensure each image gets a fresh auth token.
 # Pass --build-arg NEMOCLAW_BUILD_ID=$(date +%s) to bust the cache.
 ARG NEMOCLAW_BUILD_ID=default
@@ -67,7 +68,8 @@ ENV NEMOCLAW_MODEL=${NEMOCLAW_MODEL} \
     CHAT_UI_URL=${CHAT_UI_URL} \
     NEMOCLAW_INFERENCE_BASE_URL=${NEMOCLAW_INFERENCE_BASE_URL} \
     NEMOCLAW_INFERENCE_API=${NEMOCLAW_INFERENCE_API} \
-    NEMOCLAW_INFERENCE_COMPAT_B64=${NEMOCLAW_INFERENCE_COMPAT_B64}
+    NEMOCLAW_INFERENCE_COMPAT_B64=${NEMOCLAW_INFERENCE_COMPAT_B64} \
+    NEMOCLAW_MANAGED_INFERENCE=${NEMOCLAW_MANAGED_INFERENCE}
 
 WORKDIR /sandbox
 USER sandbox
@@ -87,21 +89,27 @@ primary_model_ref = os.environ['NEMOCLAW_PRIMARY_MODEL_REF']; \
 inference_base_url = os.environ['NEMOCLAW_INFERENCE_BASE_URL']; \
 inference_api = os.environ['NEMOCLAW_INFERENCE_API']; \
 inference_compat = json.loads(base64.b64decode(os.environ['NEMOCLAW_INFERENCE_COMPAT_B64']).decode('utf-8')); \
+managed_inference = os.environ.get('NEMOCLAW_MANAGED_INFERENCE', '1') == '1'; \
 parsed = urlparse(chat_ui_url); \
 chat_origin = f'{parsed.scheme}://{parsed.netloc}' if parsed.scheme and parsed.netloc else 'http://127.0.0.1:18789'; \
 origins = ['http://127.0.0.1:18789']; \
 origins = list(dict.fromkeys(origins + [chat_origin])); \
-providers = { \
-    provider_key: { \
-        'baseUrl': inference_base_url, \
-        'apiKey': 'unused', \
-        'api': inference_api, \
-        'models': [{**({'compat': inference_compat} if inference_compat else {}), 'id': model, 'name': primary_model_ref, 'reasoning': False, 'input': ['text'], 'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, 'contextWindow': 131072, 'maxTokens': 4096}] \
-    } \
-}; \
+providers = {}; \
+if managed_inference: \
+    providers = { \
+        provider_key: { \
+            'baseUrl': inference_base_url, \
+            'apiKey': 'unused', \
+            'api': inference_api, \
+            'models': [{**({'compat': inference_compat} if inference_compat else {}), 'id': model, 'name': primary_model_ref, 'reasoning': False, 'input': ['text'], 'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}, 'contextWindow': 131072, 'maxTokens': 4096}] \
+        } \
+    }; \
+models = {'mode': 'merge'}; \
+if providers: \
+    models['providers'] = providers; \
 config = { \
     'agents': {'defaults': {'model': {'primary': primary_model_ref}}}, \
-    'models': {'mode': 'merge', 'providers': providers}, \
+    'models': models, \
     'channels': {'defaults': {'configWrites': False}}, \
     'gateway': { \
         'mode': 'local', \

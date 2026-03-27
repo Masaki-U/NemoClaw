@@ -571,6 +571,30 @@ async function sandboxConnect(sandboxName) {
   exitWithSpawnResult(result);
 }
 
+async function sandboxOpenclaw(sandboxName, openclawArgs) {
+  await ensureLiveSandboxOrExit(sandboxName);
+  if (!Array.isArray(openclawArgs) || openclawArgs.length === 0) {
+    console.error("  Usage: nemoclaw <sandbox> openclaw <args...>");
+    console.error("  Example: nemoclaw my-assistant openclaw models auth login --provider openai-codex --set-default");
+    process.exit(1);
+  }
+
+  const result = spawnSync(
+    getOpenshellBinary(),
+    ["sandbox", "connect", sandboxName, "--", "nemoclaw-start", "openclaw", ...openclawArgs],
+    {
+      stdio: "inherit",
+      cwd: ROOT,
+      env: process.env,
+    }
+  );
+  exitWithSpawnResult(result);
+}
+
+async function sandboxCodexLogin(sandboxName) {
+  await sandboxOpenclaw(sandboxName, ["models", "auth", "login", "--provider", "openai-codex", "--set-default"]);
+}
+
 // eslint-disable-next-line complexity
 async function sandboxStatus(sandboxName) {
   const sb = registry.getSandbox(sandboxName);
@@ -722,8 +746,10 @@ function help() {
   ${G}Sandbox Management:${R}
     ${B}nemoclaw list${R}                    List all sandboxes
     nemoclaw <name> connect          Shell into a running sandbox
+    nemoclaw <name> codex-login      Run OpenAI Codex OAuth inside the sandbox
     nemoclaw <name> status           Sandbox health + NIM status
     nemoclaw <name> logs ${D}[--follow]${R}  Stream sandbox logs
+    nemoclaw <name> openclaw ...     Run an OpenClaw CLI command inside the sandbox
     nemoclaw <name> destroy          Stop NIM + delete sandbox ${D}(--yes to skip prompt)${R}
 
   ${G}Policy Presets:${R}
@@ -801,14 +827,16 @@ const [cmd, ...args] = process.argv.slice(2);
 
     switch (action) {
       case "connect":     await sandboxConnect(cmd); break;
+      case "codex-login": await sandboxCodexLogin(cmd); break;
       case "status":      await sandboxStatus(cmd); break;
       case "logs":        sandboxLogs(cmd, actionArgs.includes("--follow")); break;
+      case "openclaw":    await sandboxOpenclaw(cmd, actionArgs); break;
       case "policy-add":  await sandboxPolicyAdd(cmd); break;
       case "policy-list": sandboxPolicyList(cmd); break;
       case "destroy":     await sandboxDestroy(cmd, actionArgs); break;
       default:
         console.error(`  Unknown action: ${action}`);
-        console.error(`  Valid actions: connect, status, logs, policy-add, policy-list, destroy`);
+        console.error(`  Valid actions: connect, codex-login, status, logs, openclaw, policy-add, policy-list, destroy`);
         process.exit(1);
     }
     return;

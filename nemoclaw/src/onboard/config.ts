@@ -10,6 +10,7 @@ let configDir = join(process.env.HOME ?? tmpdir(), ".nemoclaw");
 export type EndpointType =
   | "build"
   | "openai"
+  | "openai-codex"
   | "anthropic"
   | "gemini"
   | "ncp"
@@ -35,6 +36,10 @@ export function describeOnboardEndpoint(config: NemoClawOnboardConfig): string {
     return "Managed Inference Route (inference.local)";
   }
 
+  if (config.endpointType === "openai-codex") {
+    return "Sandbox OAuth (ChatGPT/Codex)";
+  }
+
   return `${config.endpointType} (${config.endpointUrl})`;
 }
 
@@ -48,6 +53,8 @@ export function describeOnboardProvider(config: NemoClawOnboardConfig): string {
       return "NVIDIA Endpoints";
     case "openai":
       return "OpenAI";
+    case "openai-codex":
+      return "OpenAI Codex (ChatGPT OAuth)";
     case "anthropic":
       return "Anthropic";
     case "gemini":

@@ -12,6 +12,12 @@ It installs the [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) runtime,
 It also includes open source models such as [NVIDIA Nemotron](https://build.nvidia.com).
 <!-- end-intro -->
 
+> **Fork note: OpenAI Codex sandbox-only onboarding**
+>
+> This fork adds an `OpenAI Codex (ChatGPT OAuth inside sandbox)` onboarding path.
+> When selected, NemoClaw keeps OpenClaw authentication inside the sandbox, skips the host-side managed inference route, and launches `openclaw models auth login --provider openai-codex --set-default` from inside the sandbox during onboarding.
+> You can also create the sandbox first with `NEMOCLAW_PROVIDER=openai-codex nemoclaw onboard --non-interactive` and complete OAuth later with `nemoclaw <sandbox> codex-login`.
+
 > **Alpha software**
 >
 > NemoClaw is available in early preview starting March 16, 2026.

@@ -64,6 +64,14 @@ describe("onboard/config", () => {
       expect(describeOnboardEndpoint(config)).toBe("Managed Inference Route (inference.local)");
     });
 
+    it("returns the sandbox OAuth description for openai-codex", () => {
+      const config = makeConfig({
+        endpointType: "openai-codex",
+        endpointUrl: "https://auth.openai.com",
+      });
+      expect(describeOnboardEndpoint(config)).toBe("Sandbox OAuth (ChatGPT/Codex)");
+    });
+
     it("returns type and URL for other endpoints", () => {
       const config = makeConfig({
         endpointType: "ollama",
@@ -86,6 +94,7 @@ describe("onboard/config", () => {
     const endpointCases: [EndpointType, string][] = [
       ["build", "NVIDIA Endpoints"],
       ["openai", "OpenAI"],
+      ["openai-codex", "OpenAI Codex (ChatGPT OAuth)"],
       ["anthropic", "Anthropic"],
       ["gemini", "Google Gemini"],
       ["ollama", "Local Ollama"],

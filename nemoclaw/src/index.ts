@@ -165,6 +165,17 @@ function activeModelEntries(
     ];
   }
 
+  if (onboardCfg.provider === "openai-codex" || onboardCfg.endpointType === "openai-codex") {
+    return [
+      {
+        id: `openai-codex/${onboardCfg.model}`,
+        label: onboardCfg.model,
+        contextWindow: 1050000,
+        maxOutput: 128000,
+      },
+    ];
+  }
+
   return [
     {
       id: `inference/${onboardCfg.model}`,
@@ -199,6 +210,12 @@ function registeredProviderForConfig(
       },
     ],
   };
+}
+
+function shouldRegisterManagedInferenceProvider(
+  onboardCfg: ReturnType<typeof loadOnboardConfig>,
+): boolean {
+  return onboardCfg?.provider !== "openai-codex" && onboardCfg?.endpointType !== "openai-codex";
 }
 
 const DEFAULT_PLUGIN_CONFIG: NemoClawConfig = {
@@ -246,7 +263,9 @@ export default function register(api: OpenClawPluginApi): void {
   // 2. Register nvidia-nim provider — use onboard config if available
   const onboardCfg = loadOnboardConfig();
   const providerCredentialEnv = onboardCfg?.credentialEnv ?? "NVIDIA_API_KEY";
-  api.registerProvider(registeredProviderForConfig(onboardCfg, providerCredentialEnv));
+  if (shouldRegisterManagedInferenceProvider(onboardCfg)) {
+    api.registerProvider(registeredProviderForConfig(onboardCfg, providerCredentialEnv));
+  }
 
   const bannerEndpoint = onboardCfg ? describeOnboardEndpoint(onboardCfg) : "build.nvidia.com";
   const bannerProvider = onboardCfg ? describeOnboardProvider(onboardCfg) : "NVIDIA Endpoints";

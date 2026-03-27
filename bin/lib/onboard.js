@@ -70,6 +70,16 @@ const REMOTE_PROVIDER_CONFIG = {
     defaultModel: "gpt-5.4",
     skipVerify: true,
   },
+  openaiCodex: {
+    label: "OpenAI Codex (ChatGPT OAuth)",
+    providerName: "openai-codex",
+    providerType: "openai-codex",
+    credentialEnv: "",
+    endpointUrl: "https://auth.openai.com",
+    helpUrl: "https://chatgpt.com",
+    modelMode: "curated",
+    defaultModel: "gpt-5.4",
+  },
   anthropic: {
     label: "Anthropic",
     providerName: "anthropic-prod",
@@ -120,6 +130,9 @@ const REMOTE_MODEL_OPTIONS = {
     "gpt-5.4-mini",
     "gpt-5.4-nano",
     "gpt-5.4-pro-2026-03-05",
+  ],
+  openaiCodex: [
+    "gpt-5.4",
   ],
   anthropic: [
     "claude-sonnet-4-6",
@@ -452,6 +465,10 @@ function encodeDockerJsonArg(value) {
   return Buffer.from(JSON.stringify(value || {}), "utf8").toString("base64");
 }
 
+function usesManagedInference(provider = null) {
+  return provider !== "openai-codex";
+}
+
 function getSandboxInferenceConfig(model, provider = null, preferredInferenceApi = null) {
   let providerKey;
   let primaryModelRef;
@@ -460,6 +477,10 @@ function getSandboxInferenceConfig(model, provider = null, preferredInferenceApi
   let inferenceCompat = null;
 
   switch (provider) {
+    case "openai-codex":
+      providerKey = "openai-codex";
+      primaryModelRef = `openai-codex/${model}`;
+      break;
     case "openai-api":
       providerKey = "openai";
       primaryModelRef = `openai/${model}`;
@@ -532,6 +553,10 @@ function patchStagedDockerfile(dockerfilePath, model, chatUiUrl, buildId = Strin
   dockerfile = dockerfile.replace(
     /^ARG NEMOCLAW_INFERENCE_COMPAT_B64=.*$/m,
     `ARG NEMOCLAW_INFERENCE_COMPAT_B64=${encodeDockerJsonArg(inferenceCompat)}`
+  );
+  dockerfile = dockerfile.replace(
+    /^ARG NEMOCLAW_MANAGED_INFERENCE=.*$/m,
+    `ARG NEMOCLAW_MANAGED_INFERENCE=${usesManagedInference(provider) ? "1" : "0"}`
   );
   dockerfile = dockerfile.replace(
     /^ARG NEMOCLAW_BUILD_ID=.*$/m,
@@ -1188,15 +1213,17 @@ function getNonInteractiveProvider() {
   if (!providerKey) return null;
   const aliases = {
     cloud: "build",
+    codex: "openaiCodex",
+    "openai-codex": "openaiCodex",
     nim: "nim-local",
     vllm: "vllm",
     anthropiccompatible: "anthropicCompatible",
   };
   const normalized = aliases[providerKey] || providerKey;
-  const validProviders = new Set(["build", "openai", "anthropic", "anthropicCompatible", "gemini", "ollama", "custom", "nim-local", "vllm"]);
+  const validProviders = new Set(["build", "openai", "openaiCodex", "anthropic", "anthropicCompatible", "gemini", "ollama", "custom", "nim-local", "vllm"]);
   if (!validProviders.has(normalized)) {
     console.error(`  Unsupported NEMOCLAW_PROVIDER: ${providerKey}`);
-    console.error("  Valid values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm");
+    console.error("  Valid values: build, openai, openai-codex, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm");
     process.exit(1);
   }
 
@@ -1642,6 +1669,7 @@ async function setupNim(gpu) {
   if (!hasOllama && process.platform === "darwin") {
     options.push({ key: "install-ollama", label: "Install Ollama (macOS)" });
   }
+  options.push({ key: "openaiCodex", label: "OpenAI Codex (ChatGPT OAuth inside sandbox)" });
 
   if (options.length > 1) {
     selectionLoop:
@@ -1714,6 +1742,14 @@ async function setupNim(gpu) {
           await ensureApiKey();
         }
         model = requestedModel || (isNonInteractive() ? DEFAULT_CLOUD_MODEL : await promptCloudModel()) || DEFAULT_CLOUD_MODEL;
+      } else if (selected.key === "openaiCodex") {
+        const defaultModel = requestedModel || remoteConfig.defaultModel;
+        if (isNonInteractive()) {
+          model = defaultModel;
+        } else {
+          model = await promptRemoteModel(remoteConfig.label, selected.key, defaultModel);
+        }
+        preferredInferenceApi = null;
       } else {
         if (isNonInteractive()) {
           if (!process.env[credentialEnv]) {
@@ -1997,6 +2033,11 @@ async function setupInference(sandboxName, model, provider, endpointUrl = null, 
   step(4, 7, "Setting up inference provider");
   runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
 
+  if (provider === "openai-codex") {
+    console.log("  Using sandbox-local OpenClaw OAuth for OpenAI Codex; no host inference route needed.");
+    return;
+  }
+
   if (provider === "nvidia-prod" || provider === "nvidia-nim" || provider === "openai-api" || provider === "anthropic-prod" || provider === "compatible-anthropic-endpoint" || provider === "gemini-api" || provider === "compatible-endpoint") {
     const config = provider === "nvidia-nim"
       ? REMOTE_PROVIDER_CONFIG.build
@@ -2050,6 +2091,23 @@ async function setupInference(sandboxName, model, provider, endpointUrl = null, 
 
 // ── Step 6: OpenClaw ─────────────────────────────────────────────
 
+function runSandboxOpenclaw(sandboxName, args, opts = {}) {
+  const result = spawnSync(
+    getOpenshellBinary(),
+    ["sandbox", "connect", sandboxName, "--", "nemoclaw-start", "openclaw", ...args],
+    {
+      stdio: opts.stdio || "inherit",
+      cwd: ROOT,
+      env: process.env,
+    }
+  );
+  return result;
+}
+
+function printCodexLoginRetryHint(sandboxName) {
+  console.log(`  Retry later: nemoclaw ${sandboxName} codex-login`);
+}
+
 async function setupOpenclaw(sandboxName, model, provider) {
   step(6, 7, "Setting up OpenClaw inside sandbox");
 
@@ -2069,6 +2127,31 @@ async function setupOpenclaw(sandboxName, model, provider) {
     } finally {
       fs.unlinkSync(scriptFile);
     }
+  }
+
+  if (provider === "openai-codex") {
+    registry.updateSandbox(sandboxName, { model, provider });
+    if (isNonInteractive()) {
+      console.log("  Skipping interactive ChatGPT OAuth in non-interactive mode.");
+      printCodexLoginRetryHint(sandboxName);
+    } else {
+      console.log("  Launching ChatGPT OAuth inside the sandbox...");
+      console.log("  If the callback cannot be captured, follow the prompt and paste the redirect URL back.");
+      const result = runSandboxOpenclaw(sandboxName, [
+        "models",
+        "auth",
+        "login",
+        "--provider",
+        "openai-codex",
+        "--set-default",
+      ]);
+      if (result.status !== 0) {
+        console.log("  OpenAI Codex login did not complete during onboarding.");
+        printCodexLoginRetryHint(sandboxName);
+      }
+    }
+  } else {
+    registry.updateSandbox(sandboxName, { model, provider });
   }
 
   console.log("  ✓ OpenClaw gateway launched inside sandbox");
@@ -2281,6 +2364,7 @@ function printDashboard(sandboxName, model, provider, nimContainer = null) {
   let providerLabel = provider;
   if (provider === "nvidia-prod" || provider === "nvidia-nim") providerLabel = "NVIDIA Endpoints";
   else if (provider === "openai-api") providerLabel = "OpenAI";
+  else if (provider === "openai-codex") providerLabel = "OpenAI Codex (ChatGPT OAuth)";
   else if (provider === "anthropic-prod") providerLabel = "Anthropic";
   else if (provider === "compatible-anthropic-endpoint") providerLabel = "Other Anthropic-compatible endpoint";
   else if (provider === "gemini-api") providerLabel = "Google Gemini";

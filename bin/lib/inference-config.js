@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const INFERENCE_ROUTE_URL = "https://inference.local/v1";
+const OPENAI_CODEX_AUTH_URL = "https://auth.openai.com";
 const DEFAULT_CLOUD_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 const CLOUD_MODEL_OPTIONS = [
   { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B" },
@@ -40,6 +41,17 @@ function getProviderSelectionConfig(provider, model) {
         credentialEnv: "OPENAI_API_KEY",
         provider,
         providerLabel: "OpenAI",
+      };
+    case "openai-codex":
+      return {
+        endpointType: "openai-codex",
+        endpointUrl: OPENAI_CODEX_AUTH_URL,
+        ncpPartner: null,
+        model: model || "gpt-5.4",
+        profile: "openai-codex",
+        credentialEnv: "",
+        provider,
+        providerLabel: "OpenAI Codex (ChatGPT OAuth)",
       };
     case "anthropic-prod":
       return {
@@ -113,6 +125,10 @@ function getProviderSelectionConfig(provider, model) {
 }
 
 function getOpenClawPrimaryModel(provider, model) {
+  if (provider === "openai-codex") {
+    return `openai-codex/${model || "gpt-5.4"}`;
+  }
+
   const resolvedModel =
     model || (provider === "ollama-local" ? DEFAULT_OLLAMA_MODEL : DEFAULT_CLOUD_MODEL);
   return resolvedModel ? `${MANAGED_PROVIDER_ID}/${resolvedModel}` : null;

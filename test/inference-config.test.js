@@ -81,6 +81,17 @@ describe("inference selection config", () => {
       providerLabel: "OpenAI",
     });
 
+    expect(getProviderSelectionConfig("openai-codex", "gpt-5.4")).toEqual({
+      endpointType: "openai-codex",
+      endpointUrl: "https://auth.openai.com",
+      ncpPartner: null,
+      model: "gpt-5.4",
+      profile: "openai-codex",
+      credentialEnv: "",
+      provider: "openai-codex",
+      providerLabel: "OpenAI Codex (ChatGPT OAuth)",
+    });
+
     expect(getProviderSelectionConfig("anthropic-prod", "claude-sonnet-4-6")).toEqual({
       endpointType: "custom",
       endpointUrl: INFERENCE_ROUTE_URL,
@@ -134,8 +145,13 @@ describe("inference selection config", () => {
     expect(getOpenClawPrimaryModel("ollama-local", "nemotron-3-nano:30b")).toBe(`${MANAGED_PROVIDER_ID}/nemotron-3-nano:30b`);
   });
 
+  it("builds a built-in OpenClaw primary model for openai-codex", () => {
+    expect(getOpenClawPrimaryModel("openai-codex", "gpt-5.4")).toBe("openai-codex/gpt-5.4");
+  });
+
   it("falls back to provider defaults when model is omitted", () => {
     expect(getProviderSelectionConfig("openai-api").model).toBe("gpt-5.4");
+    expect(getProviderSelectionConfig("openai-codex").model).toBe("gpt-5.4");
     expect(getProviderSelectionConfig("anthropic-prod").model).toBe("claude-sonnet-4-6");
     expect(getProviderSelectionConfig("gemini-api").model).toBe("gemini-2.5-flash");
     expect(getProviderSelectionConfig("compatible-endpoint").model).toBe("custom-model");

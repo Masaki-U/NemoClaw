@@ -77,6 +77,23 @@ describe("plugin registration", () => {
       expect.objectContaining({ id: "inference/nvidia/custom-model" }),
     ]);
   });
+
+  it("skips managed inference provider registration for openai-codex", () => {
+    mockedLoadOnboardConfig.mockReturnValue({
+      endpointType: "openai-codex",
+      endpointUrl: "https://auth.openai.com",
+      ncpPartner: null,
+      model: "gpt-5.4",
+      profile: "openai-codex",
+      credentialEnv: "",
+      provider: "openai-codex",
+      providerLabel: "OpenAI Codex (ChatGPT OAuth)",
+      onboardedAt: "2026-03-01T00:00:00.000Z",
+    });
+    const api = createMockApi();
+    register(api);
+    expect(api.registerProvider).not.toHaveBeenCalled();
+  });
 });
 
 describe("getPluginConfig", () => {

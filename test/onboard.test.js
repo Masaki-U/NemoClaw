@@ -49,6 +49,7 @@ describe("onboard helpers", () => {
         "ARG NEMOCLAW_PROVIDER_KEY=nvidia",
         "ARG NEMOCLAW_PRIMARY_MODEL_REF=nvidia/nemotron-3-super-120b-a12b",
         "ARG CHAT_UI_URL=http://127.0.0.1:18789",
+        "ARG NEMOCLAW_MANAGED_INFERENCE=1",
         "ARG NEMOCLAW_INFERENCE_COMPAT_B64=e30=",
         "ARG NEMOCLAW_BUILD_ID=default",
       ].join("\n")
@@ -61,6 +62,7 @@ describe("onboard helpers", () => {
       assert.match(patched, /^ARG NEMOCLAW_PROVIDER_KEY=openai$/m);
       assert.match(patched, /^ARG NEMOCLAW_PRIMARY_MODEL_REF=openai\/gpt-5\.4$/m);
       assert.match(patched, /^ARG CHAT_UI_URL=http:\/\/127\.0\.0\.1:19999$/m);
+      assert.match(patched, /^ARG NEMOCLAW_MANAGED_INFERENCE=1$/m);
       assert.match(patched, /^ARG NEMOCLAW_BUILD_ID=build-123$/m);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -93,6 +95,7 @@ describe("onboard helpers", () => {
         "ARG NEMOCLAW_INFERENCE_BASE_URL=https://inference.local/v1",
         "ARG NEMOCLAW_INFERENCE_API=openai-completions",
         "ARG NEMOCLAW_INFERENCE_COMPAT_B64=e30=",
+        "ARG NEMOCLAW_MANAGED_INFERENCE=1",
         "ARG NEMOCLAW_BUILD_ID=default",
       ].join("\n")
     );
@@ -111,6 +114,42 @@ describe("onboard helpers", () => {
       assert.match(patched, /^ARG NEMOCLAW_PRIMARY_MODEL_REF=anthropic\/claude-sonnet-4-5$/m);
       assert.match(patched, /^ARG NEMOCLAW_INFERENCE_BASE_URL=https:\/\/inference\.local$/m);
       assert.match(patched, /^ARG NEMOCLAW_INFERENCE_API=anthropic-messages$/m);
+      assert.match(patched, /^ARG NEMOCLAW_MANAGED_INFERENCE=1$/m);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("patches the staged Dockerfile for openai-codex without managed inference routing", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-dockerfile-codex-"));
+    const dockerfilePath = path.join(tmpDir, "Dockerfile");
+    fs.writeFileSync(
+      dockerfilePath,
+      [
+        "ARG NEMOCLAW_MODEL=nvidia/nemotron-3-super-120b-a12b",
+        "ARG NEMOCLAW_PROVIDER_KEY=nvidia",
+        "ARG NEMOCLAW_PRIMARY_MODEL_REF=nvidia/nemotron-3-super-120b-a12b",
+        "ARG CHAT_UI_URL=http://127.0.0.1:18789",
+        "ARG NEMOCLAW_INFERENCE_BASE_URL=https://inference.local/v1",
+        "ARG NEMOCLAW_INFERENCE_API=openai-completions",
+        "ARG NEMOCLAW_INFERENCE_COMPAT_B64=e30=",
+        "ARG NEMOCLAW_MANAGED_INFERENCE=1",
+        "ARG NEMOCLAW_BUILD_ID=default",
+      ].join("\n")
+    );
+
+    try {
+      patchStagedDockerfile(
+        dockerfilePath,
+        "gpt-5.4",
+        "http://127.0.0.1:18789",
+        "build-codex",
+        "openai-codex"
+      );
+      const patched = fs.readFileSync(dockerfilePath, "utf8");
+      assert.match(patched, /^ARG NEMOCLAW_PROVIDER_KEY=openai-codex$/m);
+      assert.match(patched, /^ARG NEMOCLAW_PRIMARY_MODEL_REF=openai-codex\/gpt-5\.4$/m);
+      assert.match(patched, /^ARG NEMOCLAW_MANAGED_INFERENCE=0$/m);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -139,6 +178,19 @@ describe("onboard helpers", () => {
         primaryModelRef: "openai/gpt-5.4",
         inferenceBaseUrl: "https://inference.local/v1",
         inferenceApi: "openai-responses",
+        inferenceCompat: null,
+      }
+    );
+  });
+
+  it("maps openai-codex to the sandbox built-in provider without inference.local routing", () => {
+    assert.deepEqual(
+      getSandboxInferenceConfig("gpt-5.4", "openai-codex"),
+      {
+        providerKey: "openai-codex",
+        primaryModelRef: "openai-codex/gpt-5.4",
+        inferenceBaseUrl: "https://inference.local/v1",
+        inferenceApi: "openai-completions",
         inferenceCompat: null,
       }
     );
